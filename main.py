@@ -1,6 +1,10 @@
+# %%
 import os
+import glob
+import dotenv
 import logging
 import traceback
+import roboflow
 import coloredlogs
 from constants import SAMPLING_RATE, FFT_SIZE, NUM_FFT_SPEC
 from dataset import make_dataset
@@ -10,8 +14,7 @@ from dataset import make_dataset
 logger = logging.getLogger(__name__)
 coloredlogs.install(level='WARNING', logger=logger, fmt='%(asctime)s %(levelname)s %(message)s')
 
-
-def main(snr_range,
+def create_spectrograms(snr_range,
          dataset_path='../../dataset/unannotated_cage_dataset/',
          base_path='../../dataset/Relate work from AeroDefense/Data/Raw data/SR20M_G50_cage_RT15/',
          patterns=[os.path.join("**", "*.dat")],
@@ -22,7 +25,7 @@ def main(snr_range,
          num_fft_spec=NUM_FFT_SPEC,
          json_save_file='meta_data.json',
         add_original=True):
-
+    
     snr_list = [None] if add_original else []  # Include original data if specified
     snr_list.extend(list(snr_range))
     for snr_db in snr_list:
@@ -76,21 +79,72 @@ def main(snr_range,
         logger.info(f"Dataset created for {snr_db}db with {len(dataset)} entries.")
 
 
+def upload_to_roboflow(base_folder, base_path):
+    # Get all image paths in the base path
+    img_paths = glob.glob(os.path.join(base_path, '**', '*.png'), recursive=True)
+    img_folders = list(set(os.path.dirname(path) for path in img_paths))
+
+    rf = roboflow.Roboflow(api_key=os.getenv("ROBOFLOW_API_KEY"))
+
+    # Get your workspace
+    workspace = rf.workspace("dronedetectionclinic")
+
+
+    for dataset_folder in img_folders:
+        # Upload the dataset folder
+        workspace.upload_dataset(
+            dataset_folder, 
+            "winter-2026", 
+            num_workers=10, 
+            project_type="object-detection",  # e.g., 'object-detection', 'classification'
+            batch_name=f"{base_folder}-{os.path.basename(dataset_folder)}",
+            num_retries=10,
+        )
+    logger.info(f"Dataset upload completed for folder {base_folder}.")
+
+
+def main(snr_range,
+         base_folder='2026-02-10',
+         dataset_path='../../dataset/unannotated_cage_dataset/',
+         base_path='../../dataset/Relate work from AeroDefense/Data/Raw data/SR20M_G50_cage_RT15/',
+         patterns=[os.path.join("**", "*.dat")],
+         sampling_rate=SAMPLING_RATE,
+         sample_time=0.5,
+         step_time=0.1,
+         fft_size=FFT_SIZE,
+         num_fft_spec=NUM_FFT_SPEC):
+    
+    for folder_name in os.listdir(base_path):
+        # Call the main function to create the dataset
+        json_output_name = f"site_survey_{base_folder}_{folder_name}.json"
+    
+        create_spectrograms(snr_range,
+            dataset_path=os.path.join(dataset_path, folder_name),
+            base_path=os.path.join(base_path, folder_name),
+            patterns=patterns,
+            sampling_rate=sampling_rate,
+            sample_time=sample_time,
+            step_time=step_time,
+            fft_size=fft_size,
+            num_fft_spec=num_fft_spec,
+            json_save_file=json_output_name,
+            add_original=True)
+    
+    upload_to_roboflow(base_folder=base_folder, base_path=base_path)
+
+
 # %%
 if __name__ == "__main__":
     # Define the SNR range for dataset creation
     # snr_range = range(-20, 21, 5)  # Example: from -20 dB to 20 dB in steps of 5 dB
-    import os
     snr_range = []
-    base_folder = '2025-12-12'
-    dataset_path=f'../../dataset/SiteSurveyRecord/{base_folder}/'
-    base_path=f'../../dataset/SiteSurveyRecord/{base_folder}/'
-    for folder_name in os.listdir(base_path):
-        # Call the main function to create the dataset
-        json_output_name = f"site_survey_{base_folder}_{folder_name}.json"
+    base_folder = '2026-02-10'
+    dataset_path=os.path.join('/home/ad-linux-1/Clinic/RF-data-recorder/data/Rowan-Clinic-Flight-1/', base_folder)
+    base_path=os.path.join('/home/ad-linux-1/Clinic/RF-data-recorder/data/Rowan-Clinic-Flight-1/', base_folder)
 
-        main(snr_range,
-            dataset_path=os.path.join(dataset_path, folder_name),
-            base_path=os.path.join(base_path, folder_name), 
-            add_original=True)  # Set add_original=True to include the original data without noise
+    main(snr_range,
+        base_folder=base_folder,
+        dataset_path=dataset_path,
+        base_path=base_path,
+        )
 # %%
