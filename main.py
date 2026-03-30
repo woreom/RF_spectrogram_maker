@@ -137,6 +137,7 @@ def main(snr_range,
 if __name__ == "__main__":
     # Define the SNR range for dataset creation
     # snr_range = range(-20, 21, 5)  # Example: from -20 dB to 20 dB in steps of 5 dB
+    dotenv.load_dotenv()
     snr_range = []
     base_folder = '2026-02-10'
     dataset_path=os.path.join('/home/ad-linux-1/Clinic/RF-data-recorder/data/Rowan-Clinic-Flight-1/', base_folder)
